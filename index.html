@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1976d2">
+  <title>내 위치 기상 위험 모니터링</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; padding: 18px; background: #f3f6fa; color: #263238; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif; }
+    .container { width: 100%; max-width: 680px; margin: 0 auto; padding: 24px; background: #fff; border-radius: 16px; box-shadow: 0 6px 22px rgba(0,0,0,.08); }
+    h1 { margin: 0 0 7px; text-align: center; font-size: 1.55rem; }
+    .description { margin: 0 0 20px; color: #607d8b; text-align: center; font-size: .92rem; line-height: 1.5; }
+    .location-panel { margin-bottom: 18px; padding: 16px; border: 1px solid #bbdefb; border-radius: 12px; background: #eaf4fd; }
+    label { display: block; margin-bottom: 7px; color: #1565c0; font-size: .88rem; font-weight: 700; }
+    .location-controls { display: grid; grid-template-columns: 1fr auto; gap: 9px; }
+    select, button { min-height: 45px; border-radius: 9px; font: inherit; }
+    select { width: 100%; padding: 0 12px; border: 1px solid #90caf9; background: #fff; color: #263238; }
+    button { padding: 0 14px; border: 0; background: #1976d2; color: #fff; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: wait; }
+    .current-location { margin-top: 10px; color: #455a64; font-size: .85rem; line-height: 1.5; }
+    .status { padding: 19px; border-radius: 12px; line-height: 1.6; }
+    .loading { background: #eceff1; color: #546e7a; text-align: center; }
+    .spinner { width: 32px; height: 32px; margin: 0 auto 10px; border: 4px solid #cfd8dc; border-top-color: #1976d2; border-radius: 50%; animation: spin .85s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .warning { display: none; border: 1px solid #ef9a9a; background: #ffebee; color: #b71c1c; }
+    .warning h2, .error h2 { margin: 0 0 11px; font-size: 1.15rem; }
+    .warning ul { margin: 0; padding-left: 22px; }
+    .warning li { margin-bottom: 9px; }
+    .normal { display: none; border: 1px solid #a5d6a7; background: #e8f5e9; color: #1b5e20; text-align: center; font-weight: 700; }
+    .error { display: none; border: 1px solid #ffcc80; background: #fff3e0; color: #bf360c; }
+    .error button { width: 100%; margin-top: 12px; background: #ef6c00; }
+    .info { display: none; margin-top: 16px; padding: 13px; border-radius: 10px; background: #f5f7f9; color: #546e7a; font-size: .83rem; line-height: 1.7; }
+    .criteria { margin-top: 16px; padding: 13px; border-radius: 10px; background: #e3f2fd; font-size: .83rem; line-height: 1.7; }
+    .criteria strong { color: #1565c0; }
+    .footer { margin-top: 18px; color: #90a4ae; text-align: center; font-size: .76rem; line-height: 1.5; }
+    @media (max-width: 480px) { body { padding: 10px; } .container { padding: 17px; } .location-controls { grid-template-columns: 1fr; } button { width: 100%; } }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>🌦️ 기상 위험 모니터링</h1>
+    <p class="description">현재 위치를 기본으로 조회합니다. 위치 권한을 허용하거나 다른 지역을 선택하세요.</p>
+
+    <section class="location-panel">
+      <label for="region-select">조회 지역</label>
+      <div class="location-controls">
+        <select id="region-select">
+          <option value="current" selected>📍 내 현재 위치</option>
+          <option value="seoul">서울특별시</option>
+          <option value="sangam">서울 마포구 상암동</option>
+          <option value="busan">부산광역시</option>
+          <option value="daegu">대구광역시</option>
+          <option value="incheon">인천광역시</option>
+          <option value="gwangju">광주광역시</option>
+          <option value="daejeon">대전광역시</option>
+          <option value="ulsan">울산광역시</option>
+          <option value="sejong">세종특별자치시</option>
+          <option value="suwon">경기도 수원시</option>
+          <option value="chuncheon">강원특별자치도 춘천시</option>
+          <option value="cheongju">충청북도 청주시</option>
+          <option value="hongseong">충청남도 홍성군</option>
+          <option value="jeonju">전북특별자치도 전주시</option>
+          <option value="muan">전라남도 무안군</option>
+          <option value="andong">경상북도 안동시</option>
+          <option value="changwon">경상남도 창원시</option>
+          <option value="jeju">제주특별자치도 제주시</option>
+        </select>
+        <button id="refresh-location" type="button">현재 위치 다시 찾기</button>
+      </div>
+      <div id="location-info" class="current-location">현재 위치 확인을 준비하고 있습니다.</div>
+    </section>
+
+    <section id="loading" class="status loading"><div class="spinner"></div><span id="loading-text">위치를 확인하는 중입니다.</span></section>
+    <section id="warning" class="status warning"><h2>⚠️ 기상 위험 예상</h2><ul id="warning-list"></ul></section>
+    <section id="normal" class="status normal">✅ 설정 기준을 넘는 기상 위험이 확인되지 않았습니다.</section>
+    <section id="error" class="status error"><h2>❌ 조회하지 못했습니다</h2><div id="error-message"></div><button id="retry" type="button">다시 조회</button></section>
+
+    <section id="api-info" class="info"></section>
+    <section class="criteria"><strong>판정 기준</strong><br>시간당 강수량 예상 범위 30㎜ 이상 · 신적설 예상 범위 5㎝ 이상 · 시간별 기온 33℃ 이상</section>
+    <footer class="footer">자료 출처: 기상청 단기예보 조회서비스<br>실제 기상특보와 현장 안전기준을 함께 확인하세요.</footer>
+  </main>
+
+  <script>
+    "use strict";
+
+    // 공공데이터포털의 일반 인증키(Decoding)를 입력하세요.
+    const API_KEY = "여기에_새로운_API_인증키를_입력하세요";
+    const API_URL = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst";
+    const BASE_HOURS = [2, 5, 8, 11, 14, 17, 20, 23];
+    const REGIONS = {
+      seoul: [37.5665, 126.9780, "서울특별시"], sangam: [37.5775, 126.8897, "서울 마포구 상암동"],
+      busan: [35.1796, 129.0756, "부산광역시"], daegu: [35.8714, 128.6014, "대구광역시"],
+      incheon: [37.4563, 126.7052, "인천광역시"], gwangju: [35.1595, 126.8526, "광주광역시"],
+      daejeon: [36.3504, 127.3845, "대전광역시"], ulsan: [35.5384, 129.3114, "울산광역시"],
+      sejong: [36.4800, 127.2890, "세종특별자치시"], suwon: [37.2636, 127.0286, "경기도 수원시"],
+      chuncheon: [37.8813, 127.7298, "강원특별자치도 춘천시"], cheongju: [36.6424, 127.4890, "충청북도 청주시"],
+      hongseong: [36.6012, 126.6608, "충청남도 홍성군"], jeonju: [35.8242, 127.1480, "전북특별자치도 전주시"],
+      muan: [34.9904, 126.4817, "전라남도 무안군"], andong: [36.5684, 128.7294, "경상북도 안동시"],
+      changwon: [35.2285, 128.6811, "경상남도 창원시"], jeju: [33.4996, 126.5312, "제주특별자치도 제주시"]
+    };
+
+    const el = id => document.getElementById(id);
+    let selectedLocation = null;
+
+    function show(id) {
+      ["loading", "warning", "normal", "error"].forEach(name => el(name).style.display = name === id ? "block" : "none");
+    }
+
+    // 위도·경도를 기상청 격자 좌표로 변환합니다.
+    function toKmaGrid(lat, lon) {
+      const RE = 6371.00877, GRID = 5.0, SLAT1 = 30.0, SLAT2 = 60.0;
+      const OLON = 126.0, OLAT = 38.0, XO = 43, YO = 136;
+      const DEGRAD = Math.PI / 180.0;
+      const re = RE / GRID;
+      let sn = Math.tan(Math.PI * 0.25 + SLAT2 * DEGRAD * 0.5) / Math.tan(Math.PI * 0.25 + SLAT1 * DEGRAD * 0.5);
+      sn = Math.log(Math.cos(SLAT1 * DEGRAD) / Math.cos(SLAT2 * DEGRAD)) / Math.log(sn);
+      let sf = Math.tan(Math.PI * 0.25 + SLAT1 * DEGRAD * 0.5);
+      sf = Math.pow(sf, sn) * Math.cos(SLAT1 * DEGRAD) / sn;
+      let ro = Math.tan(Math.PI * 0.25 + OLAT * DEGRAD * 0.5);
+      ro = re * sf / Math.pow(ro, sn);
+      let ra = Math.tan(Math.PI * 0.25 + lat * DEGRAD * 0.5);
+      ra = re * sf / Math.pow(ra, sn);
+      let theta = lon * DEGRAD - OLON * DEGRAD;
+      if (theta > Math.PI) theta -= 2.0 * Math.PI;
+      if (theta < -Math.PI) theta += 2.0 * Math.PI;
+      theta *= sn;
+      return { x: Math.floor(ra * Math.sin(theta) + XO + 0.5), y: Math.floor(ro - ra * Math.cos(theta) + YO + 0.5) };
+    }
+
+    function latestBase() {
+      const kst = new Date(Date.now() + 9 * 3600000);
+      kst.setUTCMinutes(kst.getUTCMinutes() - 20);
+      let hour = BASE_HOURS.filter(h => h <= kst.getUTCHours()).pop();
+      if (hour === undefined) { kst.setUTCDate(kst.getUTCDate() - 1); hour = 23; }
+      const date = `${kst.getUTCFullYear()}${String(kst.getUTCMonth() + 1).padStart(2,"0")}${String(kst.getUTCDate()).padStart(2,"0")}`;
+      return { date, time: `${String(hour).padStart(2,"0")}00` };
+    }
+
+    function maxNumber(value) {
+      const found = String(value).match(/\d+(?:\.\d+)?/g);
+      return found ? Math.max(...found.map(Number)) : null;
+    }
+
+    function timeLabel(item) {
+      const d = String(item.fcstDate), t = String(item.fcstTime).padStart(4,"0");
+      return `[${d.slice(0,4)}년 ${d.slice(4,6)}월 ${d.slice(6,8)}일 ${t.slice(0,2)}시]`;
+    }
+
+    function inspect(items) {
+      const warnings = new Set();
+      for (const item of items) {
+        const value = String(item.fcstValue), max = maxNumber(value), label = timeLabel(item);
+        if (item.category === "PCP" && max !== null && max >= 30) warnings.add(`${label} 🔴 호우 가능: 강수량 ${value}`);
+        if (item.category === "SNO" && max !== null && max >= 5) warnings.add(`${label} 🔴 대설 가능: 신적설 ${value}`);
+        if (item.category === "TMP" && Number(value) >= 33) warnings.add(`${label} 🔴 고온: 기온 ${value}℃ 예상`);
+      }
+      return [...warnings];
+    }
+
+    async function loadForecast(location) {
+      if (!API_KEY || API_KEY.includes("여기에_")) throw new Error("코드의 API_KEY에 공공데이터포털 일반 인증키(Decoding)를 입력하세요.");
+      selectedLocation = location;
+      const grid = toKmaGrid(location.lat, location.lon), base = latestBase();
+      el("location-info").textContent = `${location.name} · 위도 ${location.lat.toFixed(4)}, 경도 ${location.lon.toFixed(4)} · 기상청 격자 X ${grid.x}, Y ${grid.y}`;
+      show("loading"); el("loading-text").textContent = `${location.name} 예보를 불러오는 중입니다.`; el("api-info").style.display = "none";
+
+      const params = new URLSearchParams({ serviceKey: API_KEY, pageNo: "1", numOfRows: "1000", dataType: "JSON", base_date: base.date, base_time: base.time, nx: String(grid.x), ny: String(grid.y) });
+      const response = await fetch(`${API_URL}?${params}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status} 오류가 발생했습니다.`);
+      const text = await response.text();
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error("API가 JSON이 아닌 응답을 보냈습니다. 인증키와 활용신청 상태를 확인하세요."); }
+      const header = data?.response?.header;
+      if (!header || header.resultCode !== "00") throw new Error(`API 오류: ${header?.resultMsg || "응답 형식 오류"}`);
+      const items = data?.response?.body?.items?.item;
+      if (!Array.isArray(items) || !items.length) throw new Error("조회된 예보자료가 없습니다.");
+
+      const warnings = inspect(items);
+      el("api-info").textContent = `조회지역: ${location.name} · 발표기준: ${base.date} ${base.time} · 예보자료: ${items.length.toLocaleString()}건`;
+      el("api-info").style.display = "block";
+      if (warnings.length) {
+        el("warning-list").replaceChildren(...warnings.map(message => { const li = document.createElement("li"); li.textContent = message; return li; }));
+        show("warning");
+      } else show("normal");
+    }
+
+    function handleError(error) {
+      console.error(error); el("error-message").textContent = error.message || "알 수 없는 오류입니다."; show("error");
+    }
+
+    function useCurrentLocation() {
+      show("loading"); el("loading-text").textContent = "현재 위치를 확인하는 중입니다.";
+      if (!navigator.geolocation) { useSeoulFallback("이 브라우저는 위치 기능을 지원하지 않습니다."); return; }
+      navigator.geolocation.getCurrentPosition(
+        pos => loadForecast({ lat: pos.coords.latitude, lon: pos.coords.longitude, name: "내 현재 위치" }).catch(handleError),
+        () => useSeoulFallback("위치 권한을 사용할 수 없어 서울을 임시 조회합니다."),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
+      );
+    }
+
+    function useSeoulFallback(message) {
+      el("location-info").textContent = message;
+      const [lat, lon, name] = REGIONS.seoul;
+      loadForecast({ lat, lon, name: `${name}(임시 기본값)` }).catch(handleError);
+    }
+
+    el("region-select").addEventListener("change", event => {
+      if (event.target.value === "current") { useCurrentLocation(); return; }
+      const [lat, lon, name] = REGIONS[event.target.value];
+      loadForecast({ lat, lon, name }).catch(handleError);
+    });
+    el("refresh-location").addEventListener("click", () => { el("region-select").value = "current"; useCurrentLocation(); });
+    el("retry").addEventListener("click", () => selectedLocation ? loadForecast(selectedLocation).catch(handleError) : useCurrentLocation());
+    useCurrentLocation();
+  </script>
+</body>
+</html>
